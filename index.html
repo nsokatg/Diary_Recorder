@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diary_Recorder</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #e5e7eb; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- ヘッダー -->
+  <header class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center z-10 shadow-sm">
+    <div class="flex items-center gap-3">
+      <i class="fa-solid font-bold fa-book-bookmark text-indigo-600 text-xl"></i>
+      <h1 class="text-xl font-bold tracking-wide text-slate-800">Diary_Recorder</h1>
+      <!-- 接続ステータス -->
+      <div id="file-status-container" class="ml-4 flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 text-xs text-slate-600">
+        <span id="file-status-dot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+        <span id="file-status-text">file: 未接続</span>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-3">
+      <!-- 前回ファイル再接続ボタン（初期は非表示） -->
+      <button id="btn-reconnect-file" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm">
+        <i class="fa-solid fa-rotate-right"></i> <span id="btn-reconnect-label">前回のファイルに再接続</span>
+      </button>
+
+      <!-- JSONファイル選択ボタン -->
+      <button id="btn-connect-file" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 border border-slate-300">
+        <i class="fa-solid fa-folder-open text-amber-500"></i> <span id="btn-file-label">diary.json を開く</span>
+      </button>
+      <button id="btn-new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+        <i class="fa-solid fa-plus"></i> 新規日記作成
+      </button>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ (2カラムレイアウト) -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- 左ペイン: ツリーナビゲーション & 検索 -->
+    <aside class="w-80 bg-slate-50 border-r border-slate-200 flex flex-col h-full select-text">
+      <!-- 検索バー -->
+      <div class="p-4 border-b border-slate-200">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+          <input type="text" id="search-input" placeholder="タイトル・本文を検索..." class="w-full bg-white border border-slate-300 rounded-lg pl-9 pr-8 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition placeholder-slate-400">
+          <button id="btn-search-clear" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <i class="fa-solid fa-circle-xmark text-sm"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- ツリー表示エリア -->
+      <div id="tree-container" class="flex-1 overflow-y-auto p-4 space-y-2 text-sm select-none">
+        <!-- JSで動的に構築されるツリー -->
+      </div>
+    </aside>
+
+    <!-- 右ペイン: エディタ / 詳細表示 -->
+    <main class="flex-1 bg-slate-100 flex flex-col h-full overflow-hidden select-text">
+      
+      <!-- 閲覧モード -->
+      <section id="view-section" class="hidden flex-1 flex-col h-full overflow-y-auto p-8">
+        <div class="max-w-3xl mx-auto w-full bg-white p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
+          <div class="flex justify-between items-start border-b border-slate-100 pb-4">
+            <div>
+              <span id="view-date" class="text-sm font-semibold text-indigo-600 block mb-1"></span>
+              <h2 id="view-title" class="text-2xl font-bold text-slate-800 break-words"></h2>
+            </div>
+            <div class="flex gap-2">
+              <button id="btn-edit" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-sm transition flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square"></i> 編集
+              </button>
+              <button id="btn-delete" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-sm transition flex items-center gap-2">
+                <i class="fa-solid fa-trash-can"></i> 削除
+              </button>
+            </div>
+          </div>
+          <div id="view-content" class="text-slate-700 leading-relaxed whitespace-pre-wrap break-words text-base"></div>
+        </div>
+      </section>
+
+      <!-- 編集・新規作成モード -->
+      <section id="edit-section" class="hidden flex-1 flex-col h-full p-8 overflow-y-auto">
+        <form id="diary-form" class="max-w-3xl mx-auto w-full bg-white p-8 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full gap-4">
+          <div class="flex gap-4">
+            <div class="w-48">
+              <label for="form-date" class="block text-xs font-medium text-slate-500 mb-1">日付</label>
+              <input type="date" id="form-date" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 transition">
+            </div>
+            <div class="flex-1">
+              <label for="form-title" class="block text-xs font-medium text-slate-500 mb-1">タイトル</label>
+              <input type="text" id="form-title" required placeholder="無題の日記" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 transition">
+            </div>
+          </div>
+          <div class="flex-1 flex flex-col">
+            <label for="form-content" class="block text-xs font-medium text-slate-500 mb-1">本文</label>
+            <textarea id="form-content" required placeholder="今日はどんな一日でしたか？" class="flex-1 w-full bg-slate-50 border border-slate-300 rounded-lg p-4 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 transition resize-none leading-relaxed"></textarea>
+          </div>
+          <div class="flex justify-end gap-3 pt-2">
+            <button type="button" id="btn-cancel" class="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm transition">キャンセル</button>
+            <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-sm transition shadow-sm">保存する</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 初期状態の案内 -->
+      <section id="empty-section" class="flex-1 flex flex-col items-center justify-center text-slate-400 p-8">
+        <i id="empty-icon" class="fa-solid fa-file-circle-plus text-6xl mb-4 text-slate-300"></i>
+        <p id="empty-msg" class="text-base font-medium text-center text-slate-500">
+          右上メニューの「diary.json を開く」をクリックして、<br>日記保存先の <code class="bg-slate-200 px-1.5 py-0.5 rounded text-slate-700">diary.json</code> を選択してください。
+        </p>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    let fileHandle = null;
+    let diaryEntries = [];
+    let selectedDate = null;
+    let searchQuery = '';
+    let currentEditMode = 'create';
+    let expandedNodes = new Set();
+
+    const dom = {
+      btnConnectFile: document.getElementById('btn-connect-file'),
+      btnReconnectFile: document.getElementById('btn-reconnect-file'),
+      btnReconnectLabel: document.getElementById('btn-reconnect-label'),
+      btnFileLabel: document.getElementById('btn-file-label'),
+      fileStatusDot: document.getElementById('file-status-dot'),
+      fileStatusText: document.getElementById('file-status-text'),
+      searchInput: document.getElementById('search-input'),
+      btnSearchClear: document.getElementById('btn-search-clear'),
+      treeContainer: document.getElementById('tree-container'),
+      btnNew: document.getElementById('btn-new'),
+      
+      viewSection: document.getElementById('view-section'),
+      viewDate: document.getElementById('view-date'),
+      viewTitle: document.getElementById('view-title'),
+      viewContent: document.getElementById('view-content'),
+      btnEdit: document.getElementById('btn-edit'),
+      btnDelete: document.getElementById('btn-delete'),
+
+      editSection: document.getElementById('edit-section'),
+      diaryForm: document.getElementById('diary-form'),
+      formDate: document.getElementById('form-date'),
+      formTitle: document.getElementById('form-title'),
+      formContent: document.getElementById('form-content'),
+      btnCancel: document.getElementById('btn-cancel'),
+
+      emptySection: document.getElementById('empty-section'),
+      emptyMsg: document.getElementById('empty-msg')
+    };
+
+    // --- 1. IndexedDB ユーティリティ (ファイルハンドルの保管用) ---
+    const DB_NAME = 'DiaryRecorderDB';
+    const STORE_NAME = 'handles';
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function saveLastFileHandle(handle) {
+      try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put(handle, 'last_file');
+      } catch (err) {
+        console.warn('ファイルハンドルの記憶に失敗しました:', err);
+      }
+    }
+
+    async function getLastFileHandle() {
+      try {
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        return new Promise((resolve) => {
+          const req = tx.objectStore(STORE_NAME).get('last_file');
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        });
+      } catch {
+        return null;
+      }
+    }
+
+    // --- 2. File System Access API 操作 ---
+
+    async function verifyPermission(fileHandle, readWrite) {
+      const options = readWrite ? { mode: 'readwrite' } : {};
+      if ((await fileHandle.queryPermission(options)) === 'granted') return true;
+      if ((await fileHandle.requestPermission(options)) === 'granted') return true;
+      return false;
+    }
+
+    // JSONファイルを選択
+    async function selectDataFile() {
+      if (!('showOpenFilePicker' in window)) {
+        alert('お使いのブラウザはローカルファイルの直接選択に対応していません。ChromeまたはEdgeをご利用ください。');
+        return;
+      }
+
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }],
+          multiple: false
+        });
+
+        fileHandle = handle;
+        await saveLastFileHandle(fileHandle);
+        await readDataFromFile();
+        updateFileStatus(true, fileHandle.name);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('File Access Error:', err);
+          alert('ファイルの読み込みに失敗しました。');
+        }
+      }
+    }
+
+    // 前回の保存先に再接続
+    async function reconnectLastFile() {
+      if (!fileHandle) return;
+      try {
+        const hasPermission = await verifyPermission(fileHandle, true);
+        if (hasPermission) {
+          await readDataFromFile();
+          updateFileStatus(true, fileHandle.name);
+        }
+      } catch (err) {
+        console.error('Reconnect Error:', err);
+        alert('前回のファイルへの接続に失敗しました。再度「diary.json を開く」からファイルを選択してください。');
+      }
+    }
+
+    // ファイルから読み込み
+    async function readDataFromFile() {
+      if (!fileHandle) return;
+      try {
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        diaryEntries = text.trim() ? JSON.parse(text) : [];
+        
+        dom.btnNew.disabled = false;
+        renderTree();
+        
+        if (selectedDate && diaryEntries.some(e => e.id === selectedDate)) {
+          selectDiary(selectedDate);
+        } else {
+          selectedDate = null;
+          showEmptyState('ファイルに接続しました。左側ツリーから選択するか新規作成してください。');
+        }
+      } catch (err) {
+        console.error('Read Error:', err);
+        alert('JSONファイルの読み込みに失敗しました。正しいJSONファイルか確認してください。');
+      }
+    }
+
+    // ファイルへ上書き保存
+    async function saveDataToFile() {
+      if (!fileHandle) return;
+      try {
+        const hasPermission = await verifyPermission(fileHandle, true);
+        if (!hasPermission) {
+          alert('ファイルへの書き込み権限が取得できませんでした。');
+          return;
+        }
+
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(diaryEntries, null, 2));
+        await writable.close();
+      } catch (err) {
+        console.error('Write Error:', err);
+        alert('ファイルへの保存に失敗しました。');
+      }
+    }
+
+    function updateFileStatus(isConnected, fileName = '') {
+      if (isConnected) {
+        dom.fileStatusDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+        dom.fileStatusText.textContent = `接続中: ${fileName}`;
+        dom.btnFileLabel.textContent = 'ファイル変更';
+        dom.btnReconnectFile.classList.add('hidden');
+      } else {
+        dom.fileStatusDot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        dom.fileStatusText.textContent = 'file: 未接続';
+        dom.btnFileLabel.textContent = 'diary.json を開く';
+        dom.btnNew.disabled = true;
+      }
+    }
+
+    // --- 3. ツリー構築および UI 表示 ---
+    function buildTreeData() {
+      const filteredEntries = diaryEntries.filter(entry => {
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        return entry.title.toLowerCase().includes(q) || entry.content.toLowerCase().includes(q);
+      });
+
+      const tree = {};
+      filteredEntries.sort((a, b) => b.id.localeCompare(a.id));
+
+      filteredEntries.forEach(entry => {
+        const [year, month, day] = entry.id.split('-');
+        if (!tree[year]) tree[year] = {};
+        if (!tree[year][month]) tree[year][month] = [];
+        tree[year][month].push({ day, entry });
+      });
+
+      return tree;
+    }
+
+    function renderTree() {
+      if (!fileHandle) {
+        dom.treeContainer.innerHTML = `<div class="text-center text-slate-400 py-8">diary.json を開いてください</div>`;
+        return;
+      }
+
+      const treeData = buildTreeData();
+      dom.treeContainer.innerHTML = '';
+
+      if (Object.keys(treeData).length === 0) {
+        dom.treeContainer.innerHTML = `<div class="text-center text-slate-400 py-8">日記が見つかりません</div>`;
+        return;
+      }
+
+      const years = Object.keys(treeData).sort((a, b) => b.localeCompare(a));
+
+      years.forEach(year => {
+        const yearNode = document.createElement('div');
+        yearNode.className = 'select-none';
+        const isYearExpanded = expandedNodes.has(`y-${year}`) || searchQuery !== '';
+        
+        const yearHeader = document.createElement('div');
+        yearHeader.className = 'flex items-center gap-2 px-2 py-1.5 text-slate-700 hover:bg-slate-200/60 rounded cursor-pointer transition';
+        yearHeader.innerHTML = `
+          <i class="fa-solid fa-chevron-right text-xs text-slate-400 transition-transform ${isYearExpanded ? 'rotate-90' : ''}"></i>
+          <i class="fa-solid fa-folder text-indigo-500"></i>
+          <span class="font-bold text-slate-800">${year}年</span>
+        `;
+        
+        const monthContainer = document.createElement('div');
+        monthContainer.className = `pl-4 space-y-1 ${isYearExpanded ? '' : 'hidden'}`;
+
+        yearHeader.addEventListener('click', () => {
+          const key = `y-${year}`;
+          if (expandedNodes.has(key)) expandedNodes.delete(key);
+          else expandedNodes.add(key);
+          renderTree();
+        });
+
+        const months = Object.keys(treeData[year]).sort((a, b) => b.localeCompare(a));
+        months.forEach(month => {
+          const monthNode = document.createElement('div');
+          const isMonthExpanded = expandedNodes.has(`m-${year}-${month}`) || searchQuery !== '';
+
+          const monthHeader = document.createElement('div');
+          monthHeader.className = 'flex items-center gap-2 px-2 py-1 text-slate-600 hover:bg-slate-200/60 rounded cursor-pointer transition';
+          monthHeader.innerHTML = `
+            <i class="fa-solid fa-chevron-right text-xs text-slate-400 transition-transform ${isMonthExpanded ? 'rotate-90' : ''}"></i>
+            <i class="fa-solid fa-folder-open text-indigo-400"></i>
+            <span>${parseInt(month, 10)}月</span>
+          `;
+
+          const dayContainer = document.createElement('div');
+          dayContainer.className = `pl-4 space-y-0.5 ${isMonthExpanded ? '' : 'hidden'}`;
+
+          monthHeader.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const key = `m-${year}-${month}`;
+            if (expandedNodes.has(key)) expandedNodes.delete(key);
+            else expandedNodes.add(key);
+            renderTree();
+          });
+
+          treeData[year][month].forEach(({ day, entry }) => {
+            const dayItem = document.createElement('div');
+            const isSelected = selectedDate === entry.id;
+            
+            dayItem.className = `flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition ${
+              isSelected ? 'bg-indigo-100 text-indigo-900 font-medium border-l-2 border-indigo-600' : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+            }`;
+            
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'truncate text-xs flex-1';
+            titleSpan.textContent = entry.title || '無題';
+
+            dayItem.innerHTML = `<i class="fa-regular fa-file-lines text-xs text-slate-400"></i><span class="text-xs">${parseInt(day, 10)}日</span>`;
+            dayItem.appendChild(titleSpan);
+
+            dayItem.addEventListener('click', () => selectDiary(entry.id));
+
+            dayContainer.appendChild(dayItem);
+          });
+
+          monthNode.appendChild(monthHeader);
+          monthNode.appendChild(dayContainer);
+          monthContainer.appendChild(monthNode);
+        });
+
+        yearNode.appendChild(yearHeader);
+        yearNode.appendChild(monthContainer);
+        dom.treeContainer.appendChild(yearNode);
+      });
+    }
+
+    function setViewMode(mode) {
+      dom.viewSection.classList.add('hidden');
+      dom.editSection.classList.add('hidden');
+      dom.emptySection.classList.add('hidden');
+
+      if (mode === 'view') {
+        dom.viewSection.classList.remove('hidden');
+        dom.viewSection.classList.add('flex');
+      } else if (mode === 'edit') {
+        dom.editSection.classList.remove('hidden');
+        dom.editSection.classList.add('flex');
+      } else {
+        dom.emptySection.classList.remove('hidden');
+        dom.emptySection.classList.add('flex');
+      }
+    }
+
+    function showEmptyState(message) {
+      dom.emptyMsg.innerHTML = message;
+      setViewMode('empty');
+    }
+
+    function selectDiary(id) {
+      selectedDate = id;
+      const entry = diaryEntries.find(item => item.id === id);
+      if (!entry) {
+        selectedDate = null;
+        showEmptyState('日記を選択してください。');
+        renderTree();
+        return;
+      }
+
+      dom.viewDate.textContent = formatDateLabel(entry.id);
+      dom.viewTitle.textContent = entry.title || '無題';
+
+      // 1. セキュリティ対策 (HTML文字のエスケープ)
+      const safeContent = (entry.content || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      // 2. 「。」の後に自動で <br> (改行タグ) を挿入
+      const formattedContent = safeContent.replace(/。(?![\r\n]|$)/g, '。<br>');
+      dom.viewContent.innerHTML = formattedContent;
+
+      setViewMode('view');
+      renderTree();
+    }
+
+    function openCreateForm() {
+      currentEditMode = 'create';
+      dom.diaryForm.reset();
+      
+      const today = new Date().toISOString().split('T')[0];
+      dom.formDate.value = today;
+      dom.formDate.disabled = false;
+
+      setViewMode('edit');
+      dom.formTitle.focus();
+    }
+
+    function openEditForm() {
+      if (!selectedDate) return;
+      const entry = diaryEntries.find(item => item.id === selectedDate);
+      if (!entry) return;
+
+      currentEditMode = 'edit';
+      dom.formDate.value = entry.id;
+      dom.formDate.disabled = true;
+      dom.formTitle.value = entry.title;
+      dom.formContent.value = entry.content;
+
+      setViewMode('edit');
+      dom.formTitle.focus();
+    }
+
+    async function handleFormSubmit(e) {
+      e.preventDefault();
+      
+      const dateVal = dom.formDate.value;
+      const titleVal = dom.formTitle.value.trim();
+      const contentVal = dom.formContent.value.trim();
+
+      if (!dateVal) return;
+
+      if (currentEditMode === 'create') {
+        const exists = diaryEntries.some(item => item.id === dateVal);
+        if (exists && !confirm(`${dateVal} の日記は既に存在します。上書きしますか？`)) {
+          return;
+        }
+      }
+
+      const now = new Date().toISOString();
+
+      if (currentEditMode === 'create') {
+        const existingIndex = diaryEntries.findIndex(item => item.id === dateVal);
+        const newEntry = { id: dateVal, title: titleVal, content: contentVal, updatedAt: now };
+        if (existingIndex !== -1) diaryEntries[existingIndex] = newEntry;
+        else diaryEntries.push(newEntry);
+      } else {
+        const entry = diaryEntries.find(item => item.id === selectedDate);
+        if (entry) {
+          entry.title = titleVal;
+          entry.content = contentVal;
+          entry.updatedAt = now;
+        }
+      }
+
+      const [y, m] = dateVal.split('-');
+      expandedNodes.add(`y-${y}`);
+      expandedNodes.add(`m-${y}-${m}`);
+
+      await saveDataToFile();
+      selectDiary(dateVal);
+    }
+
+    async function handleDelete() {
+      if (!selectedDate) return;
+      if (confirm(`${selectedDate} の日記を削除してもよろしいですか？`)) {
+        diaryEntries = diaryEntries.filter(item => item.id !== selectedDate);
+        await saveDataToFile();
+        selectedDate = null;
+        showEmptyState('削除が完了しました。');
+        renderTree();
+      }
+    }
+
+    function formatDateLabel(dateStr) {
+      const [y, m, d] = dateStr.split('-');
+      return `${y}年${parseInt(m, 10)}月${parseInt(d, 10)}日`;
+    }
+
+    function initEventListeners() {
+      dom.btnConnectFile.addEventListener('click', selectDataFile);
+      dom.btnReconnectFile.addEventListener('click', reconnectLastFile);
+
+      dom.searchInput.addEventListener('input', (e) => {
+        searchQuery = e.target.value.trim();
+        dom.btnSearchClear.classList.toggle('hidden', searchQuery === '');
+        renderTree();
+      });
+
+      dom.btnSearchClear.addEventListener('click', () => {
+        dom.searchInput.value = '';
+        searchQuery = '';
+        dom.btnSearchClear.classList.add('hidden');
+        renderTree();
+      });
+
+      dom.btnNew.addEventListener('click', openCreateForm);
+      dom.btnEdit.addEventListener('click', openEditForm);
+      dom.btnDelete.addEventListener('click', handleDelete);
+      dom.btnCancel.addEventListener('click', () => {
+        if (selectedDate) selectDiary(selectedDate);
+        else showEmptyState('日記を選択してください。');
+      });
+
+      dom.diaryForm.addEventListener('submit', handleFormSubmit);
+    }
+
+    // 起動時の初期化処理
+    async function init() {
+      initEventListeners();
+      updateFileStatus(false);
+
+      // 前回のファイル保存先を記憶していれば「再接続ボタン」を表示
+      const savedHandle = await getLastFileHandle();
+      if (savedHandle) {
+        fileHandle = savedHandle;
+        dom.btnReconnectLabel.textContent = `「${fileHandle.name}」に再接続`;
+        dom.btnReconnectFile.classList.remove('hidden');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
