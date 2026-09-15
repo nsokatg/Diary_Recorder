@@ -8,9 +8,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome CDN -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <!-- Google API Client & Identity Services -->
+  <!-- Google API Client & Identity Services (onloadで初期化を起動) -->
   <script src="https://apis.google.com/js/api.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://accounts.google.com/gsi/client" onload="handleGsiLoad()"></script>
   <style>
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #e5e7eb; }
@@ -54,7 +54,7 @@
     <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-amber-800">
       <div class="flex items-center gap-2">
         <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
-        <span>Google Driveと同期するには、ご自身の <strong>Google OAuth クライアントID</strong> の入力が必要です。</span>
+        <span>Google Driveと同期するにはご自身の <strong>Google OAuth クライアントID</strong> の入力が必要です。</span>
       </div>
       <div class="flex w-full sm:w-auto gap-2">
         <input type="text" id="clientIdInput" placeholder="xxxxxx.apps.googleusercontent.com" 
@@ -193,17 +193,26 @@
 
     // --- 1. Client ID & Auth 管理 ---
 
+    function handleGsiLoad() {
+      const clientId = localStorage.getItem('google_client_id');
+      if (clientId) {
+        initGoogleAuth(clientId);
+      }
+    }
+
     function loadClientId() {
       const clientId = localStorage.getItem('google_client_id');
       if (clientId) {
         dom.clientIdInput.value = clientId;
         dom.clientIdBanner.classList.add('hidden');
-        initGoogleAuth(clientId);
+        if (window.google) {
+          initGoogleAuth(clientId);
+        }
       }
     }
 
     function initGoogleAuth(clientId) {
-      if (!window.google) return;
+      if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) return;
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: SCOPES,
@@ -566,11 +575,18 @@
         }
       });
 
+      // モバイルのブロックを回避するため、タップイベント内で即座にrequestAccessTokenを実行
       dom.btnAuth.addEventListener('click', () => {
-        if (!localStorage.getItem('google_client_id')) {
+        const clientId = localStorage.getItem('google_client_id');
+        if (!clientId) {
           alert('先にGoogleクライアントIDを設定してください。');
           return;
         }
+
+        if (!tokenClient && window.google) {
+          initGoogleAuth(clientId);
+        }
+
         if (accessToken) {
           accessToken = null;
           updateStatus('offline', '未接続');
@@ -579,7 +595,11 @@
           renderTree();
           showEmptyState('Google Drive から切断しました。');
         } else {
-          tokenClient.requestAccessToken({ prompt: 'consent' });
+          if (tokenClient) {
+            tokenClient.requestAccessToken();
+          } else {
+            alert('Google認証ライブラリを読み込んでいます。数秒後に再度お試しください。');
+          }
         }
       });
 
