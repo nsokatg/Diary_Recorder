@@ -3,11 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Diary_Recorder</title>
+  <title>Diary_Recorder (Cloud Sync)</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome CDN -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google API Client & Identity Services -->
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #e5e7eb; }
@@ -25,25 +28,41 @@
       <!-- 接続ステータス -->
       <div id="file-status-container" class="ml-4 flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 text-xs text-slate-600">
         <span id="file-status-dot" class="w-2 h-2 rounded-full bg-rose-500"></span>
-        <span id="file-status-text">file: 未接続</span>
+        <span id="file-status-text">未接続</span>
       </div>
     </div>
     
     <div class="flex items-center gap-3">
-      <!-- 前回ファイル再接続ボタン（初期は非表示） -->
-      <button id="btn-reconnect-file" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm">
-        <i class="fa-solid fa-rotate-right"></i> <span id="btn-reconnect-label">前回のファイルに再接続</span>
+      <!-- 手動同期ボタン -->
+      <button id="btn-sync" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 border border-slate-300">
+        <i class="fa-solid fa-rotate text-indigo-500"></i> 手動同期
       </button>
 
-      <!-- JSONファイル選択ボタン -->
-      <button id="btn-connect-file" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 border border-slate-300">
-        <i class="fa-solid fa-folder-open text-amber-500"></i> <span id="btn-file-label">diary.json を開く</span>
+      <!-- Google Drive 接続ボタン -->
+      <button id="btn-auth" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm">
+        <i class="fa-brands fa-google"></i> <span id="btn-auth-label">Drive接続</span>
       </button>
+
       <button id="btn-new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
         <i class="fa-solid fa-plus"></i> 新規日記作成
       </button>
     </div>
   </header>
+
+  <!-- Google Client ID 設定エリア (初回のみ設定) -->
+  <div id="clientIdBanner" class="bg-amber-50 border-b border-amber-200 p-3">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-amber-800">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
+        <span>Google Driveと同期するには、ご自身の <strong>Google OAuth クライアントID</strong> の入力が必要です。</span>
+      </div>
+      <div class="flex w-full sm:w-auto gap-2">
+        <input type="text" id="clientIdInput" placeholder="xxxxxx.apps.googleusercontent.com" 
+          class="px-3 py-1.5 bg-white border border-amber-300 rounded text-slate-800 flex-1 sm:w-80">
+        <button id="saveClientIdBtn" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded font-medium whitespace-nowrap">保存</button>
+      </div>
+    </div>
+  </div>
 
   <!-- メインコンテンツ (2カラムレイアウト) -->
   <div class="flex-1 flex overflow-hidden">
@@ -110,16 +129,16 @@
           </div>
           <div class="flex justify-end gap-3 pt-2">
             <button type="button" id="btn-cancel" class="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm transition">キャンセル</button>
-            <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-sm transition shadow-sm">保存する</button>
+            <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-sm transition shadow-sm">クラウドに保存</button>
           </div>
         </form>
       </section>
 
       <!-- 初期状態の案内 -->
       <section id="empty-section" class="flex-1 flex flex-col items-center justify-center text-slate-400 p-8">
-        <i id="empty-icon" class="fa-solid fa-file-circle-plus text-6xl mb-4 text-slate-300"></i>
+        <i id="empty-icon" class="fa-solid fa-cloud-arrow-up text-6xl mb-4 text-slate-300"></i>
         <p id="empty-msg" class="text-base font-medium text-center text-slate-500">
-          右上メニューの「diary.json を開く」をクリックして、<br>日記保存先の <code class="bg-slate-200 px-1.5 py-0.5 rounded text-slate-700">diary.json</code> を選択してください。
+          右上メニューの「Drive接続」をクリックして、<br>Google Drive と同期を開始してください。
         </p>
       </section>
 
@@ -127,18 +146,26 @@
   </div>
 
   <script>
-    let fileHandle = null;
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+    const FILE_NAME = 'diary.json';
+
     let diaryEntries = [];
     let selectedDate = null;
     let searchQuery = '';
     let currentEditMode = 'create';
     let expandedNodes = new Set();
 
+    let tokenClient = null;
+    let accessToken = null;
+    let fileId = null;
+
     const dom = {
-      btnConnectFile: document.getElementById('btn-connect-file'),
-      btnReconnectFile: document.getElementById('btn-reconnect-file'),
-      btnReconnectLabel: document.getElementById('btn-reconnect-label'),
-      btnFileLabel: document.getElementById('btn-file-label'),
+      clientIdBanner: document.getElementById('clientIdBanner'),
+      clientIdInput: document.getElementById('clientIdInput'),
+      saveClientIdBtn: document.getElementById('saveClientIdBtn'),
+      btnAuth: document.getElementById('btn-auth'),
+      btnAuthLabel: document.getElementById('btn-auth-label'),
+      btnSync: document.getElementById('btn-sync'),
       fileStatusDot: document.getElementById('file-status-dot'),
       fileStatusText: document.getElementById('file-status-text'),
       searchInput: document.getElementById('search-input'),
@@ -164,149 +191,126 @@
       emptyMsg: document.getElementById('empty-msg')
     };
 
-    // --- 1. IndexedDB ユーティリティ (ファイルハンドルの保管用) ---
-    const DB_NAME = 'DiaryRecorderDB';
-    const STORE_NAME = 'handles';
+    // --- 1. Client ID & Auth 管理 ---
 
-    function openDB() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+    function loadClientId() {
+      const clientId = localStorage.getItem('google_client_id');
+      if (clientId) {
+        dom.clientIdInput.value = clientId;
+        dom.clientIdBanner.classList.add('hidden');
+        initGoogleAuth(clientId);
+      }
+    }
+
+    function initGoogleAuth(clientId) {
+      if (!window.google) return;
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: SCOPES,
+        callback: async (resp) => {
+          if (resp.error) return;
+          accessToken = resp.access_token;
+          dom.btnAuthLabel.textContent = '切断';
+          updateStatus('syncing', '同期中...');
+          await syncWithDrive();
+        },
       });
     }
 
-    async function saveLastFileHandle(handle) {
+    // --- 2. Drive API 操作 ---
+
+    async function syncWithDrive() {
       try {
-        const db = await openDB();
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).put(handle, 'last_file');
-      } catch (err) {
-        console.warn('ファイルハンドルの記憶に失敗しました:', err);
-      }
-    }
+        if (!accessToken) return;
 
-    async function getLastFileHandle() {
-      try {
-        const db = await openDB();
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        return new Promise((resolve) => {
-          const req = tx.objectStore(STORE_NAME).get('last_file');
-          req.onsuccess = () => resolve(req.result || null);
-          req.onerror = () => resolve(null);
-        });
-      } catch {
-        return null;
-      }
-    }
-
-    // --- 2. File System Access API 操作 ---
-
-    async function verifyPermission(fileHandle, readWrite) {
-      const options = readWrite ? { mode: 'readwrite' } : {};
-      if ((await fileHandle.queryPermission(options)) === 'granted') return true;
-      if ((await fileHandle.requestPermission(options)) === 'granted') return true;
-      return false;
-    }
-
-    // JSONファイルを選択
-    async function selectDataFile() {
-      if (!('showOpenFilePicker' in window)) {
-        alert('お使いのブラウザはローカルファイルの直接選択に対応していません。ChromeまたはEdgeをご利用ください。');
-        return;
-      }
-
-      try {
-        const [handle] = await window.showOpenFilePicker({
-          types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }],
-          multiple: false
-        });
-
-        fileHandle = handle;
-        await saveLastFileHandle(fileHandle);
-        await readDataFromFile();
-        updateFileStatus(true, fileHandle.name);
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          console.error('File Access Error:', err);
-          alert('ファイルの読み込みに失敗しました。');
+        if (!fileId) {
+          const q = encodeURIComponent(`name = '${FILE_NAME}' and trashed = false`);
+          const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          const data = await res.json();
+          if (data.files && data.files.length > 0) {
+            fileId = data.files[0].id;
+          }
         }
-      }
-    }
 
-    // 前回の保存先に再接続
-    async function reconnectLastFile() {
-      if (!fileHandle) return;
-      try {
-        const hasPermission = await verifyPermission(fileHandle, true);
-        if (hasPermission) {
-          await readDataFromFile();
-          updateFileStatus(true, fileHandle.name);
+        if (fileId) {
+          const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          const text = await res.text();
+          diaryEntries = text.trim() ? JSON.parse(text) : [];
+        } else {
+          await saveToDrive();
         }
-      } catch (err) {
-        console.error('Reconnect Error:', err);
-        alert('前回のファイルへの接続に失敗しました。再度「diary.json を開く」からファイルを選択してください。');
-      }
-    }
 
-    // ファイルから読み込み
-    async function readDataFromFile() {
-      if (!fileHandle) return;
-      try {
-        const file = await fileHandle.getFile();
-        const text = await file.text();
-        diaryEntries = text.trim() ? JSON.parse(text) : [];
-        
+        updateStatus('online', `接続中: Google Drive (${FILE_NAME})`);
         dom.btnNew.disabled = false;
         renderTree();
-        
+
         if (selectedDate && diaryEntries.some(e => e.id === selectedDate)) {
           selectDiary(selectedDate);
         } else {
           selectedDate = null;
-          showEmptyState('ファイルに接続しました。左側ツリーから選択するか新規作成してください。');
+          showEmptyState('クラウドと同期しました。左側ツリーから選択するか新規作成してください。');
         }
-      } catch (err) {
-        console.error('Read Error:', err);
-        alert('JSONファイルの読み込みに失敗しました。正しいJSONファイルか確認してください。');
+      } catch (e) {
+        console.error('Drive Sync Error', e);
+        updateStatus('offline', '同期エラー');
       }
     }
 
-    // ファイルへ上書き保存
-    async function saveDataToFile() {
-      if (!fileHandle) return;
+    async function saveToDrive() {
+      if (!accessToken) return;
+      updateStatus('syncing', '保存中...');
+
+      const metadata = { name: FILE_NAME, mimeType: 'application/json' };
+      const content = JSON.stringify(diaryEntries, null, 2);
+
       try {
-        const hasPermission = await verifyPermission(fileHandle, true);
-        if (!hasPermission) {
-          alert('ファイルへの書き込み権限が取得できませんでした。');
-          return;
-        }
+        if (fileId) {
+          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: content
+          });
+        } else {
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          form.append('file', new Blob([content], { type: 'application/json' }));
 
-        const writable = await fileHandle.createWritable();
-        await writable.write(JSON.stringify(diaryEntries, null, 2));
-        await writable.close();
-      } catch (err) {
-        console.error('Write Error:', err);
-        alert('ファイルへの保存に失敗しました。');
+          const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}` },
+            body: form
+          });
+          const data = await res.json();
+          fileId = data.id;
+        }
+        updateStatus('online', `接続中: Google Drive (${FILE_NAME})`);
+      } catch (e) {
+        console.error('Drive Save Error', e);
+        updateStatus('offline', '保存失敗');
       }
     }
 
-    function updateFileStatus(isConnected, fileName = '') {
-      if (isConnected) {
+    function updateStatus(state, text) {
+      if (state === 'online') {
         dom.fileStatusDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
-        dom.fileStatusText.textContent = `接続中: ${fileName}`;
-        dom.btnFileLabel.textContent = 'ファイル変更';
-        dom.btnReconnectFile.classList.add('hidden');
+        dom.fileStatusText.textContent = text;
+      } else if (state === 'syncing') {
+        dom.fileStatusDot.className = 'w-2 h-2 rounded-full bg-amber-500 animate-pulse';
+        dom.fileStatusText.textContent = text;
       } else {
         dom.fileStatusDot.className = 'w-2 h-2 rounded-full bg-rose-500';
-        dom.fileStatusText.textContent = 'file: 未接続';
-        dom.btnFileLabel.textContent = 'diary.json を開く';
+        dom.fileStatusText.textContent = text;
         dom.btnNew.disabled = true;
       }
     }
 
     // --- 3. ツリー構築および UI 表示 ---
+
     function buildTreeData() {
       const filteredEntries = diaryEntries.filter(entry => {
         if (!searchQuery) return true;
@@ -328,8 +332,8 @@
     }
 
     function renderTree() {
-      if (!fileHandle) {
-        dom.treeContainer.innerHTML = `<div class="text-center text-slate-400 py-8">diary.json を開いてください</div>`;
+      if (!accessToken) {
+        dom.treeContainer.innerHTML = `<div class="text-center text-slate-400 py-8">Google Drive に接続してください</div>`;
         return;
       }
 
@@ -456,13 +460,11 @@
       dom.viewDate.textContent = formatDateLabel(entry.id);
       dom.viewTitle.textContent = entry.title || '無題';
 
-      // 1. セキュリティ対策 (HTML文字のエスケープ)
       const safeContent = (entry.content || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-      // 2. 「。」の後に自動で <br> (改行タグ) を挿入
       const formattedContent = safeContent.replace(/。(?![\r\n]|$)/g, '。<br>');
       dom.viewContent.innerHTML = formattedContent;
 
@@ -533,7 +535,7 @@
       expandedNodes.add(`y-${y}`);
       expandedNodes.add(`m-${y}-${m}`);
 
-      await saveDataToFile();
+      await saveToDrive();
       selectDiary(dateVal);
     }
 
@@ -541,7 +543,7 @@
       if (!selectedDate) return;
       if (confirm(`${selectedDate} の日記を削除してもよろしいですか？`)) {
         diaryEntries = diaryEntries.filter(item => item.id !== selectedDate);
-        await saveDataToFile();
+        await saveToDrive();
         selectedDate = null;
         showEmptyState('削除が完了しました。');
         renderTree();
@@ -554,8 +556,36 @@
     }
 
     function initEventListeners() {
-      dom.btnConnectFile.addEventListener('click', selectDataFile);
-      dom.btnReconnectFile.addEventListener('click', reconnectLastFile);
+      dom.saveClientIdBtn.addEventListener('click', () => {
+        const val = dom.clientIdInput.value.trim();
+        if (val) {
+          localStorage.setItem('google_client_id', val);
+          dom.clientIdBanner.classList.add('hidden');
+          initGoogleAuth(val);
+          alert('クライアントIDを保存しました。「Drive接続」を押してログインしてください。');
+        }
+      });
+
+      dom.btnAuth.addEventListener('click', () => {
+        if (!localStorage.getItem('google_client_id')) {
+          alert('先にGoogleクライアントIDを設定してください。');
+          return;
+        }
+        if (accessToken) {
+          accessToken = null;
+          updateStatus('offline', '未接続');
+          dom.btnAuthLabel.textContent = 'Drive接続';
+          diaryEntries = [];
+          renderTree();
+          showEmptyState('Google Drive から切断しました。');
+        } else {
+          tokenClient.requestAccessToken({ prompt: 'consent' });
+        }
+      });
+
+      dom.btnSync.addEventListener('click', () => {
+        if (accessToken) syncWithDrive();
+      });
 
       dom.searchInput.addEventListener('input', (e) => {
         searchQuery = e.target.value.trim();
@@ -582,17 +612,10 @@
     }
 
     // 起動時の初期化処理
-    async function init() {
+    function init() {
       initEventListeners();
-      updateFileStatus(false);
-
-      // 前回のファイル保存先を記憶していれば「再接続ボタン」を表示
-      const savedHandle = await getLastFileHandle();
-      if (savedHandle) {
-        fileHandle = savedHandle;
-        dom.btnReconnectLabel.textContent = `「${fileHandle.name}」に再接続`;
-        dom.btnReconnectFile.classList.remove('hidden');
-      }
+      updateStatus('offline', '未接続');
+      loadClientId();
     }
 
     document.addEventListener('DOMContentLoaded', init);
