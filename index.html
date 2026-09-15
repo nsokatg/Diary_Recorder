@@ -8,136 +8,138 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome CDN -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <!-- Google API Client & Identity Services (onloadで初期化を起動) -->
+  <!-- Google API Client & Identity Services -->
   <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://accounts.google.com/gsi/client" onload="handleGsiLoad()"></script>
   <style>
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: #e5e7eb; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans h-screen flex flex-col overflow-hidden select-none">
 
   <!-- ヘッダー -->
-  <header class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center z-10 shadow-sm">
-    <div class="flex items-center gap-3">
-      <i class="fa-solid font-bold fa-book-bookmark text-indigo-600 text-xl"></i>
-      <h1 class="text-xl font-bold tracking-wide text-slate-800">Diary_Recorder</h1>
-      <!-- 接続ステータス -->
-      <div id="file-status-container" class="ml-4 flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 text-xs text-slate-600">
+  <header class="bg-white border-b border-slate-200 px-3 sm:px-6 py-2 sm:py-3 flex flex-wrap justify-between items-center z-10 shadow-sm gap-2">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid font-bold fa-book-bookmark text-indigo-600 text-lg sm:text-xl"></i>
+      <h1 class="text-base sm:text-xl font-bold tracking-wide text-slate-800">Diary_Recorder</h1>
+      <div id="file-status-container" class="flex items-center gap-1.5 bg-slate-100 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-slate-200 text-xs text-slate-600">
         <span id="file-status-dot" class="w-2 h-2 rounded-full bg-rose-500"></span>
-        <span id="file-status-text">未接続</span>
+        <span id="file-status-text" class="truncate max-w-[100px] sm:max-w-none">未接続</span>
       </div>
     </div>
     
-    <div class="flex items-center gap-3">
-      <!-- 手動同期ボタン -->
-      <button id="btn-sync" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 border border-slate-300">
-        <i class="fa-solid fa-rotate text-indigo-500"></i> 手動同期
+    <div class="flex items-center gap-2">
+      <button id="btn-sync" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition flex items-center gap-1 border border-slate-300">
+        <i class="fa-solid fa-rotate text-indigo-500"></i> <span class="hidden sm:inline">手動同期</span>
       </button>
 
-      <!-- Google Drive 接続ボタン -->
-      <button id="btn-auth" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm">
+      <button id="btn-auth" class="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition flex items-center gap-1 shadow-sm">
         <i class="fa-brands fa-google"></i> <span id="btn-auth-label">Drive接続</span>
       </button>
 
-      <button id="btn-new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-        <i class="fa-solid fa-plus"></i> 新規日記作成
+      <button id="btn-new" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition flex items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+        <i class="fa-solid fa-plus"></i> <span class="hidden sm:inline">新規作成</span><span class="sm:hidden">新規</span>
       </button>
     </div>
   </header>
 
-  <!-- Google Client ID 設定エリア (初回のみ設定) -->
-  <div id="clientIdBanner" class="bg-amber-50 border-b border-amber-200 p-3">
-    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-amber-800">
-      <div class="flex items-center gap-2">
-        <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
-        <span>Google Driveと同期するにはご自身の <strong>Google OAuth クライアントID</strong> の入力が必要です。</span>
+  <!-- スマホ用タブ切り替えバー (PCでは非表示) -->
+  <div class="flex md:hidden bg-white border-b border-slate-200 text-xs font-medium">
+    <button id="tab-btn-tree" class="flex-1 py-2 text-center text-indigo-600 border-b-2 border-indigo-600 font-bold">
+      <i class="fa-solid fa-folder-tree mr-1"></i>一覧
+    </button>
+    <button id="tab-btn-content" class="flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent">
+      <i class="fa-solid fa-file-lines mr-1"></i>本文・編集
+    </button>
+  </div>
+
+  <!-- Client ID 設定エリア -->
+  <div id="clientIdBanner" class="bg-amber-50 border-b border-amber-200 p-2 sm:p-3">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-amber-800">
+      <div class="flex items-center gap-1.5">
+        <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+        <span>OAuth クライアントIDの設定が必要です</span>
       </div>
       <div class="flex w-full sm:w-auto gap-2">
         <input type="text" id="clientIdInput" placeholder="xxxxxx.apps.googleusercontent.com" 
-          class="px-3 py-1.5 bg-white border border-amber-300 rounded text-slate-800 flex-1 sm:w-80">
-        <button id="saveClientIdBtn" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded font-medium whitespace-nowrap">保存</button>
+          class="px-2 py-1 bg-white border border-amber-300 rounded text-slate-800 flex-1 sm:w-80 text-xs">
+        <button id="saveClientIdBtn" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded font-medium whitespace-nowrap">保存</button>
       </div>
     </div>
   </div>
 
-  <!-- メインコンテンツ (2カラムレイアウト) -->
-  <div class="flex-1 flex overflow-hidden">
+  <!-- メインコンテンツ -->
+  <div class="flex-1 flex overflow-hidden relative">
     
-    <!-- 左ペイン: ツリーナビゲーション & 検索 -->
-    <aside class="w-80 bg-slate-50 border-r border-slate-200 flex flex-col h-full select-text">
-      <!-- 検索バー -->
-      <div class="p-4 border-b border-slate-200">
+    <!-- 左ペイン: ツリーナビゲーション -->
+    <aside id="pane-tree" class="w-full md:w-80 bg-slate-50 border-r border-slate-200 flex flex-col h-full select-text absolute md:relative inset-0 z-10 md:z-auto bg-slate-50">
+      <div class="p-3 border-b border-slate-200">
         <div class="relative">
-          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-          <input type="text" id="search-input" placeholder="タイトル・本文を検索..." class="w-full bg-white border border-slate-300 rounded-lg pl-9 pr-8 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition placeholder-slate-400">
-          <button id="btn-search-clear" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-            <i class="fa-solid fa-circle-xmark text-sm"></i>
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <input type="text" id="search-input" placeholder="タイトル・本文を検索..." class="w-full bg-white border border-slate-300 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500">
+          <button id="btn-search-clear" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <i class="fa-solid fa-circle-xmark text-xs"></i>
           </button>
         </div>
       </div>
 
-      <!-- ツリー表示エリア -->
-      <div id="tree-container" class="flex-1 overflow-y-auto p-4 space-y-2 text-sm select-none">
-        <!-- JSで動的に構築されるツリー -->
-      </div>
+      <div id="tree-container" class="flex-1 overflow-y-auto p-3 space-y-1 text-sm select-none"></div>
     </aside>
 
     <!-- 右ペイン: エディタ / 詳細表示 -->
-    <main class="flex-1 bg-slate-100 flex flex-col h-full overflow-hidden select-text">
+    <main id="pane-content" class="w-full md:flex-1 bg-slate-100 flex flex-col h-full overflow-hidden select-text absolute md:relative inset-0 hidden md:flex">
       
       <!-- 閲覧モード -->
-      <section id="view-section" class="hidden flex-1 flex-col h-full overflow-y-auto p-8">
-        <div class="max-w-3xl mx-auto w-full bg-white p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
-          <div class="flex justify-between items-start border-b border-slate-100 pb-4">
+      <section id="view-section" class="hidden flex-1 flex-col h-full overflow-y-auto p-4 sm:p-8">
+        <div class="max-w-3xl mx-auto w-full bg-white p-4 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex justify-between items-start border-b border-slate-100 pb-3 gap-2">
             <div>
-              <span id="view-date" class="text-sm font-semibold text-indigo-600 block mb-1"></span>
-              <h2 id="view-title" class="text-2xl font-bold text-slate-800 break-words"></h2>
+              <span id="view-date" class="text-xs sm:text-sm font-semibold text-indigo-600 block mb-0.5"></span>
+              <h2 id="view-title" class="text-lg sm:text-2xl font-bold text-slate-800 break-words"></h2>
             </div>
-            <div class="flex gap-2">
-              <button id="btn-edit" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-sm transition flex items-center gap-2">
+            <div class="flex gap-1.5 shrink-0">
+              <button id="btn-edit" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs sm:text-sm transition flex items-center gap-1">
                 <i class="fa-solid fa-pen-to-square"></i> 編集
               </button>
-              <button id="btn-delete" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-sm transition flex items-center gap-2">
+              <button id="btn-delete" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs sm:text-sm transition flex items-center gap-1">
                 <i class="fa-solid fa-trash-can"></i> 削除
               </button>
             </div>
           </div>
-          <div id="view-content" class="text-slate-700 leading-relaxed whitespace-pre-wrap break-words text-base"></div>
+          <div id="view-content" class="text-slate-700 leading-relaxed whitespace-pre-wrap break-words text-sm sm:text-base"></div>
         </div>
       </section>
 
       <!-- 編集・新規作成モード -->
-      <section id="edit-section" class="hidden flex-1 flex-col h-full p-8 overflow-y-auto">
-        <form id="diary-form" class="max-w-3xl mx-auto w-full bg-white p-8 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full gap-4">
-          <div class="flex gap-4">
-            <div class="w-48">
+      <section id="edit-section" class="hidden flex-1 flex-col h-full p-4 sm:p-8 overflow-y-auto">
+        <form id="diary-form" class="max-w-3xl mx-auto w-full bg-white p-4 sm:p-8 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full gap-3">
+          <div class="flex flex-col sm:flex-row gap-3">
+            <div class="w-full sm:w-48">
               <label for="form-date" class="block text-xs font-medium text-slate-500 mb-1">日付</label>
-              <input type="date" id="form-date" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 transition">
+              <input type="date" id="form-date" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500">
             </div>
             <div class="flex-1">
               <label for="form-title" class="block text-xs font-medium text-slate-500 mb-1">タイトル</label>
-              <input type="text" id="form-title" required placeholder="無題の日記" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 transition">
+              <input type="text" id="form-title" required placeholder="無題の日記" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500">
             </div>
           </div>
           <div class="flex-1 flex flex-col">
             <label for="form-content" class="block text-xs font-medium text-slate-500 mb-1">本文</label>
-            <textarea id="form-content" required placeholder="今日はどんな一日でしたか？" class="flex-1 w-full bg-slate-50 border border-slate-300 rounded-lg p-4 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 transition resize-none leading-relaxed"></textarea>
+            <textarea id="form-content" required placeholder="今日はどんな一日でしたか？" class="flex-1 w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"></textarea>
           </div>
-          <div class="flex justify-end gap-3 pt-2">
-            <button type="button" id="btn-cancel" class="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm transition">キャンセル</button>
-            <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-sm transition shadow-sm">クラウドに保存</button>
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" id="btn-cancel" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs sm:text-sm">キャンセル</button>
+            <button type="submit" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-xs sm:text-sm shadow-sm">クラウドに保存</button>
           </div>
         </form>
       </section>
 
       <!-- 初期状態の案内 -->
-      <section id="empty-section" class="flex-1 flex flex-col items-center justify-center text-slate-400 p-8">
-        <i id="empty-icon" class="fa-solid fa-cloud-arrow-up text-6xl mb-4 text-slate-300"></i>
-        <p id="empty-msg" class="text-base font-medium text-center text-slate-500">
+      <section id="empty-section" class="flex-1 flex flex-col items-center justify-center text-slate-400 p-6">
+        <i id="empty-icon" class="fa-solid fa-cloud-arrow-up text-4xl sm:text-6xl mb-3 text-slate-300"></i>
+        <p id="empty-msg" class="text-xs sm:text-base font-medium text-center text-slate-500">
           右上メニューの「Drive接続」をクリックして、<br>Google Drive と同期を開始してください。
         </p>
       </section>
@@ -173,6 +175,11 @@
       treeContainer: document.getElementById('tree-container'),
       btnNew: document.getElementById('btn-new'),
       
+      paneTree: document.getElementById('pane-tree'),
+      paneContent: document.getElementById('pane-content'),
+      tabBtnTree: document.getElementById('tab-btn-tree'),
+      tabBtnContent: document.getElementById('tab-btn-content'),
+
       viewSection: document.getElementById('view-section'),
       viewDate: document.getElementById('view-date'),
       viewTitle: document.getElementById('view-title'),
@@ -191,13 +198,26 @@
       emptyMsg: document.getElementById('empty-msg')
     };
 
-    // --- 1. Client ID & Auth 管理 ---
+    // --- モバイルタブ切り替え ---
+    function switchMobileTab(tab) {
+      if (tab === 'tree') {
+        dom.paneTree.classList.remove('hidden');
+        dom.paneContent.classList.add('hidden');
+        dom.tabBtnTree.className = 'flex-1 py-2 text-center text-indigo-600 border-b-2 border-indigo-600 font-bold';
+        dom.tabBtnContent.className = 'flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent';
+      } else {
+        dom.paneTree.classList.add('hidden');
+        dom.paneContent.classList.remove('hidden');
+        dom.paneContent.classList.add('flex');
+        dom.tabBtnContent.className = 'flex-1 py-2 text-center text-indigo-600 border-b-2 border-indigo-600 font-bold';
+        dom.tabBtnTree.className = 'flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent';
+      }
+    }
 
+    // --- 1. Client ID & Auth 管理 ---
     function handleGsiLoad() {
       const clientId = localStorage.getItem('google_client_id');
-      if (clientId) {
-        initGoogleAuth(clientId);
-      }
+      if (clientId) initGoogleAuth(clientId);
     }
 
     function loadClientId() {
@@ -205,9 +225,7 @@
       if (clientId) {
         dom.clientIdInput.value = clientId;
         dom.clientIdBanner.classList.add('hidden');
-        if (window.google) {
-          initGoogleAuth(clientId);
-        }
+        if (window.google) initGoogleAuth(clientId);
       }
     }
 
@@ -227,7 +245,6 @@
     }
 
     // --- 2. Drive API 操作 ---
-
     async function syncWithDrive() {
       try {
         if (!accessToken) return;
@@ -239,9 +256,7 @@
             headers: { 'Authorization': `Bearer ${accessToken}` }
           });
           const data = await res.json();
-          if (data.files && data.files.length > 0) {
-            fileId = data.files[0].id;
-          }
+          if (data.files && data.files.length > 0) fileId = data.files[0].id;
         }
 
         if (fileId) {
@@ -254,7 +269,7 @@
           await saveToDrive();
         }
 
-        updateStatus('online', `接続中: Google Drive (${FILE_NAME})`);
+        updateStatus('online', '接続中');
         dom.btnNew.disabled = false;
         renderTree();
 
@@ -262,11 +277,11 @@
           selectDiary(selectedDate);
         } else {
           selectedDate = null;
-          showEmptyState('クラウドと同期しました。左側ツリーから選択するか新規作成してください。');
+          showEmptyState('同期完了。日記を選択してください。');
         }
       } catch (e) {
         console.error('Drive Sync Error', e);
-        updateStatus('offline', '同期エラー');
+        updateStatus('offline', 'エラー');
       }
     }
 
@@ -297,7 +312,7 @@
           const data = await res.json();
           fileId = data.id;
         }
-        updateStatus('online', `接続中: Google Drive (${FILE_NAME})`);
+        updateStatus('online', '接続中');
       } catch (e) {
         console.error('Drive Save Error', e);
         updateStatus('offline', '保存失敗');
@@ -319,7 +334,6 @@
     }
 
     // --- 3. ツリー構築および UI 表示 ---
-
     function buildTreeData() {
       const filteredEntries = diaryEntries.filter(entry => {
         if (!searchQuery) return true;
@@ -342,7 +356,7 @@
 
     function renderTree() {
       if (!accessToken) {
-        dom.treeContainer.innerHTML = `<div class="text-center text-slate-400 py-8">Google Drive に接続してください</div>`;
+        dom.treeContainer.innerHTML = `<div class="text-center text-slate-400 py-8 text-xs">Driveに接続してください</div>`;
         return;
       }
 
@@ -350,7 +364,7 @@
       dom.treeContainer.innerHTML = '';
 
       if (Object.keys(treeData).length === 0) {
-        dom.treeContainer.innerHTML = `<div class="text-center text-slate-400 py-8">日記が見つかりません</div>`;
+        dom.treeContainer.innerHTML = `<div class="text-center text-slate-400 py-8 text-xs">日記がありません</div>`;
         return;
       }
 
@@ -370,7 +384,7 @@
         `;
         
         const monthContainer = document.createElement('div');
-        monthContainer.className = `pl-4 space-y-1 ${isYearExpanded ? '' : 'hidden'}`;
+        monthContainer.className = `pl-3 space-y-0.5 ${isYearExpanded ? '' : 'hidden'}`;
 
         yearHeader.addEventListener('click', () => {
           const key = `y-${year}`;
@@ -393,7 +407,7 @@
           `;
 
           const dayContainer = document.createElement('div');
-          dayContainer.className = `pl-4 space-y-0.5 ${isMonthExpanded ? '' : 'hidden'}`;
+          dayContainer.className = `pl-3 space-y-0.5 ${isMonthExpanded ? '' : 'hidden'}`;
 
           monthHeader.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -418,7 +432,10 @@
             dayItem.innerHTML = `<i class="fa-regular fa-file-lines text-xs text-slate-400"></i><span class="text-xs">${parseInt(day, 10)}日</span>`;
             dayItem.appendChild(titleSpan);
 
-            dayItem.addEventListener('click', () => selectDiary(entry.id));
+            dayItem.addEventListener('click', () => {
+              selectDiary(entry.id);
+              if (window.innerWidth < 768) switchMobileTab('content');
+            });
 
             dayContainer.appendChild(dayItem);
           });
@@ -490,6 +507,7 @@
       dom.formDate.disabled = false;
 
       setViewMode('edit');
+      if (window.innerWidth < 768) switchMobileTab('content');
       dom.formTitle.focus();
     }
 
@@ -505,6 +523,7 @@
       dom.formContent.value = entry.content;
 
       setViewMode('edit');
+      if (window.innerWidth < 768) switchMobileTab('content');
       dom.formTitle.focus();
     }
 
@@ -565,6 +584,9 @@
     }
 
     function initEventListeners() {
+      dom.tabBtnTree.addEventListener('click', () => switchMobileTab('tree'));
+      dom.tabBtnContent.addEventListener('click', () => switchMobileTab('content'));
+
       dom.saveClientIdBtn.addEventListener('click', () => {
         const val = dom.clientIdInput.value.trim();
         if (val) {
@@ -575,7 +597,6 @@
         }
       });
 
-      // モバイルのブロックを回避するため、タップイベント内で即座にrequestAccessTokenを実行
       dom.btnAuth.addEventListener('click', () => {
         const clientId = localStorage.getItem('google_client_id');
         if (!clientId) {
@@ -583,9 +604,7 @@
           return;
         }
 
-        if (!tokenClient && window.google) {
-          initGoogleAuth(clientId);
-        }
+        if (!tokenClient && window.google) initGoogleAuth(clientId);
 
         if (accessToken) {
           accessToken = null;
@@ -598,7 +617,7 @@
           if (tokenClient) {
             tokenClient.requestAccessToken();
           } else {
-            alert('Google認証ライブラリを読み込んでいます。数秒後に再度お試しください。');
+            alert('Googleライブラリを読み込んでいます。数秒後に再度お試しください。');
           }
         }
       });
@@ -631,7 +650,6 @@
       dom.diaryForm.addEventListener('submit', handleFormSubmit);
     }
 
-    // 起動時の初期化処理
     function init() {
       initEventListeners();
       updateStatus('offline', '未接続');
